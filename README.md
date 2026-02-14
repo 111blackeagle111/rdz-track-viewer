@@ -5,7 +5,7 @@ Visualizzatore offline per tracce radiosonde meteo con analisi avanzata del volo
 [![HTML5](https://img.shields.io/badge/HTML5-ES6-orange.svg)](https://www.w3.org/TR/html5/)
 [![Leaflet](https://img.shields.io/badge/Maps-Leaflet-green.svg)](https://leafletjs.com/)
 
-![Screenshot interfaccia](screenshot.png)
+![Screenshot interfaccia](Screenshot.png)
 
 ## ✨ Caratteristiche
 
