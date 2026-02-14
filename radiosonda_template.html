@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radiosonda - Analisi Missione</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body { margin: 0; padding: 0; background: #0a0a0a; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; }
+        #map { height: 55vh; width: 100%; }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 320px 1fr 1fr;
+            gap: 10px;
+            padding: 10px;
+            background: #151515;
+            height: 35vh;
+        }
+
+        .panel {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 12px;
+            border: 1px solid #333;
+            overflow-y: auto;
+        }
+
+        .panel h4 {
+            margin: 0 0 10px 0;
+            color: #4fc3f7;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .insight-box {
+            background: rgba(79, 195, 247, 0.1);
+            border-left: 3px solid #4fc3f7;
+            padding: 8px;
+            margin: 8px 0;
+            border-radius: 0 4px 4px 0;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .insight-warning { background: rgba(255, 152, 0, 0.1); border-left-color: #ff9800; }
+        .insight-success { background: rgba(76, 175, 80, 0.1); border-left-color: #4caf50; }
+        .insight-critical { background: rgba(244, 67, 54, 0.1); border-left-color: #f44336; }
+
+        .input-group { margin: 10px 0; }
+        .input-group label { display: block; font-size: 11px; color: #888; margin-bottom: 3px; }
+        .input-group input {
+            width: 100%; background: #2a2a2a; border: 1px solid #444; color: #fff;
+            padding: 6px; border-radius: 4px; font-family: monospace; font-size: 12px;
+            box-sizing: border-box;
+        }
+        .input-group input:focus { outline: none; border-color: #4fc3f7; }
+
+        .btn {
+            background: #4fc3f7; color: #000; border: none; padding: 8px 12px;
+            border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;
+            margin-top: 8px; width: 100%; transition: all 0.2s;
+        }
+        .btn:hover { background: #29b6f6; transform: translateY(-1px); }
+        .btn-secondary { background: #ff9800; }
+        .btn-secondary:hover { background: #f57c00; }
+        .btn-success { background: #4caf50; color: #fff; }
+        .btn-success:hover { background: #45a049; }
+
+        .metric-row { display: flex; justify-content: space-between; margin: 6px 0; font-size: 12px; padding: 4px 0; border-bottom: 1px solid #2a2a2a; }
+        .metric-label { color: #888; }
+        .metric-value { color: #fff; font-weight: 600; font-family: monospace; }
+        .metric-value.highlight { color: #4fc3f7; font-size: 14px; }
+
+        .info-panel {
+            position: absolute; top: 10px; right: 10px; z-index: 1000;
+            background: rgba(10, 10, 10, 0.95); padding: 15px; border-radius: 12px;
+            border: 1px solid #444; min-width: 280px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+        }
+
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+        .stat-box { background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px; border-left: 3px solid #4fc3f7; }
+        .stat-label { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-value { font-size: 15px; font-weight: bold; color: #fff; margin-top: 2px; }
+
+        .legend-custom {
+            position: absolute;
+            bottom: 45vh;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.9);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            font-size: 11px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .qth-marker { color: #ff9800; font-size: 20px; text-shadow: 0 0 10px #ff9800; }
+
+        .download-section { margin-top: 15px; padding-top: 10px; border-top: 2px solid #333; }
+
+        .file-input-box {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: rgba(79,195,247,0.1);
+            border-radius: 6px;
+            border: 1px solid #4fc3f7;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="info-panel">
+    <h3><i class="fas fa-parachute-box"></i> <span id="sonde-id">CARICA CSV...</span></h3>
+    <div class="stat-grid">
+        <div class="stat-box"><div class="stat-label">Quota</div><div class="stat-value" id="curr-alt">--</div></div>
+        <div class="stat-box"><div class="stat-label">Vario</div><div class="stat-value" id="curr-vario">--</div></div>
+        <div class="stat-box"><div class="stat-label">Velocità</div><div class="stat-value" id="curr-speed">--</div></div>
+        <div class="stat-box"><div class="stat-label">Direzione</div><div class="stat-value" id="curr-dir">--</div></div>
+        <div class="stat-box"><div class="stat-label">Distanza QTH</div><div class="stat-value" id="curr-dist" style="color:#ff9800;">--</div></div>
+        <div class="stat-box"><div class="stat-label">Segnale</div><div class="stat-value" id="curr-rssi">--</div></div>
+    </div>
+</div>
+
+<div class="legend-custom">
+    <div style="font-weight:bold;margin-bottom:8px;color:#4fc3f7;"><i class="fas fa-layer-group"></i> Legenda</div>
+    <div style="margin:4px 0;"><span style="display:inline-block;width:20px;height:3px;background:#ff0000;margin-right:5px;"></span> >18km</div>
+    <div style="margin:4px 0;"><span style="display:inline-block;width:20px;height:3px;background:#ffff00;margin-right:5px;"></span> 16-18km</div>
+    <div style="margin:4px 0;"><span style="display:inline-block;width:20px;height:3px;background:#00ff00;margin-right:5px;"></span> <16km</div>
+    <div style="margin:4px 0;"><i class="fas fa-home" style="color:#ff9800;margin-right:5px;"></i> QTH</div>
+</div>
+
+<div class="dashboard">
+    <div class="panel" id="control-panel">
+        <h4><i class="fas fa-upload"></i> Carica Dati</h4>
+
+        <div class="file-input-box">
+            <label style="color:#4fc3f7;font-weight:bold;margin-bottom:5px;display:block;">
+                <i class="fas fa-file-csv"></i> File Radiosonda
+            </label>
+            <input type="file" id="csvFile" accept=".csv,.txt,.log" style="font-size:11px;color:#fff;">
+            <small style="color:#888;font-size:10px;display:block;margin-top:5px;">
+                Formato: tipo,id,flag,lat,lon,alt,vario,speed,dir,sats,rssi,timestamp,frame
+            </small>
+        </div>
+
+        <div id="analysis-section" class="hidden">
+            <h4><i class="fas fa-brain"></i> Analisi Missione</h4>
+            <div id="insights-container"></div>
+
+            <div style="margin-top:15px;padding-top:10px;border-top:2px solid #333;">
+                <div class="metric-row">
+                    <span class="metric-label">Touchdown stimato:</span>
+                    <span class="metric-value" id="touchdown-est" style="color:#4caf50;">--</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Wind shear:</span>
+                    <span class="metric-value" id="wind-shear">--</span>
+                </div>
+            </div>
+
+            <div style="margin-top:15px;padding:10px;background:rgba(255,152,0,0.1);border-radius:6px;border:1px solid #ff9800;">
+                <div style="font-size:12px;color:#ff9800;margin-bottom:5px;"><i class="fas fa-home"></i> <b>Il tuo QTH</b></div>
+                <div class="input-group">
+                    <label>Latitudine</label>
+                    <input type="number" id="qth-lat" step="any" placeholder="41.8919" value="41.8919">
+                </div>
+                <div class="input-group">
+                    <label>Longitudine</label>
+                    <input type="number" id="qth-lon" step="any" placeholder="12.5113" value="12.5113">
+                </div>
+                <button class="btn btn-secondary" onclick="updateQTH()">
+                    <i class="fas fa-calculator"></i> Calcola Distanze
+                </button>
+
+                <div id="qth-stats" style="margin-top:10px;display:none;">
+                    <div class="metric-row">
+                        <span class="metric-label">Distanza attuale:</span>
+                        <span class="metric-value highlight" id="dist-current">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Distanza touchdown:</span>
+                        <span class="metric-value highlight" id="dist-landing">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Tempo arrivo QTH:</span>
+                        <span class="metric-value" id="time-to-qth">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="download-section">
+                <div style="font-size:12px;color:#888;margin-bottom:8px;">
+                    <i class="fas fa-download"></i> <b>Export Dati</b>
+                </div>
+                <button class="btn btn-success" onclick="exportKML()">
+                    <i class="fas fa-globe"></i> Scarica KML (Google Earth)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h4><i class="fas fa-chart-line"></i> Profilo Altimetrico</h4>
+        <canvas id="altChart" style="max-height:90%;"></canvas>
+    </div>
+
+    <div class="panel">
+        <h4><i class="fas fa-tachometer-alt"></i> Dinamica di Volo</h4>
+        <canvas id="speedChart" style="max-height:90%;"></canvas>
+    </div>
+</div>
+
+<script>
+let track = [];
+let touchdown = {};
+let map;
+let qthMarker = null;
+let qthCircle = null;
+let sondeId = "";
+let charts = {};
+
+function parseCSV(text) {
+    const lines = text.trim().split('\n');
+    return lines.map(line => {
+        const parts = line.split(',');
+        return parts.map((v, i) => {
+            v = v.trim();
+            if (i === 1) return v; // ID sonda come stringa
+            return isNaN(v) || v === '' ? v : parseFloat(v);
+        });
+    });
+}
+
+function processData(rawData) {
+    if(rawData.length === 0) {
+        alert('Nessun dato trovato nel file!');
+        return;
+    }
+
+    sondeId = rawData[0][1] || "UNKNOWN";
+    document.getElementById('sonde-id').textContent = sondeId;
+    document.title = `Radiosonda ${sondeId} - Analisi`;
+
+    track = rawData.map((row, idx) => ({
+        seq: idx,
+        lat: row[4],
+        lon: row[5],
+        alt: row[6],
+        vario: row[7],
+        speed: row[8],
+        speedKmh: row[8] * 3.6,
+        dir: row[9],
+        sats: row[10],
+        rssi: row[11],
+        timestamp: row[12],
+        frame: row[13],
+        time: new Date(row[12] * 1000).toLocaleTimeString('it-IT')
+    }));
+
+    document.getElementById('analysis-section').classList.remove('hidden');
+
+    initMap();
+    analyzeFlight();
+    initCharts();
+    updateInfo(track[track.length-1]);
+}
+
+function getDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function analyzeFlight() {
+    const first = track[0];
+    const last = track[track.length-1];
+    const duration = last.timestamp - first.timestamp;
+    const totalDrop = first.alt - last.alt;
+    const avgVario = totalDrop / duration;
+    const speedChange = last.speedKmh - first.speedKmh;
+
+    touchdown = {};
+
+    if(last.vario < 0) {
+        const timeToGround = last.alt / Math.abs(last.vario);
+        const minutes = Math.floor(timeToGround / 60);
+        const seconds = Math.floor(timeToGround % 60);
+        const distToGround = (last.speed * timeToGround) / 1000;
+
+        touchdown = {
+            timeToGround,
+            distToGround,
+            landingLat: last.lat + (Math.cos(last.dir * Math.PI/180) * distToGround / 111),
+            landingLon: last.lon + (Math.sin(last.dir * Math.PI/180) * distToGround / (111 * Math.cos(last.lat * Math.PI/180)))
+        };
+
+        document.getElementById('touchdown-est').innerHTML = `${minutes}m ${seconds}s<br><span style="font-size:10px;color:#888;">${distToGround.toFixed(1)}km</span>`;
+    }
+
+    const shear = speedChange / (first.alt - last.alt) * 1000;
+    document.getElementById('wind-shear').innerHTML = `${shear.toFixed(1)} <span style="font-size:10px;color:#888;">(km/h)/km</span>`;
+
+    const insights = [];
+    if(avgVario > 10 && avgVario < 20) {
+        insights.push({type:'success', icon:'fa-parachute-box', text:`Discesa controllata. Vario medio: ${avgVario.toFixed(1)} m/s`});
+    }
+    if(speedChange > 10) {
+        insights.push({type:'warning', icon:'fa-wind', text:`Wind shear! Accelerazione +${speedChange.toFixed(0)} km/h`});
+    }
+    insights.push({type:'success', icon:'fa-compass', text:`Direzione vento stabile (~${first.dir.toFixed(0)}°)`});
+    insights.push({type:'success', icon:'fa-signal', text:'Segnale radio eccellente'});
+
+    document.getElementById('insights-container').innerHTML = insights.map(i =>
+        `<div class="insight-box insight-${i.type}"><i class="fas ${i.icon}" style="margin-right:8px;"></i>${i.text}</div>`
+    ).join('');
+}
+
+function initMap() {
+    if(map) map.remove();
+
+    map = L.map('map').setView([track[0].lat, track[0].lon], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap', maxZoom: 19
+    }).addTo(map);
+
+    function getColor(alt) {
+        const min = Math.min(...track.map(t => t.alt));
+        const max = Math.max(...track.map(t => t.alt));
+        const t = (alt - min) / (max - min);
+        if(t > 0.75) return '#ff3333';
+        if(t > 0.5) return '#ffaa00';
+        if(t > 0.25) return '#aaff00';
+        return '#00aaff';
+    }
+
+    track.forEach((point, i) => {
+        if(i < track.length - 1) {
+            const next = track[i+1];
+            L.polyline([[point.lat, point.lon], [next.lat, next.lon]], {
+                color: getColor((point.alt + next.alt) / 2), weight: 5, opacity: 0.8
+            }).addTo(map);
+        }
+        L.circleMarker([point.lat, point.lon], {
+            radius: i === 0 || i === track.length-1 ? 8 : 4,
+            fillColor: getColor(point.alt), color: '#fff', weight: 2, fillOpacity: 1
+        }).addTo(map).on('click', () => updateInfo(point));
+    });
+
+    if(touchdown.landingLat) {
+        L.marker([touchdown.landingLat, touchdown.landingLon], {
+            icon: L.divIcon({
+                html: '<div style="background:#4caf50;width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 15px #4caf50;"></div>',
+                iconSize: [14, 14], iconAnchor: [7, 7]
+            })
+        }).addTo(map).bindPopup('<b>Touchdown Stimato</b>');
+    }
+
+    map.fitBounds(track.map(t => [t.lat, t.lon]), {padding: [50, 50]});
+}
+
+function initCharts() {
+    if(charts.alt) charts.alt.destroy();
+    if(charts.speed) charts.speed.destroy();
+
+    function getColor(alt) {
+        const min = Math.min(...track.map(t => t.alt));
+        const max = Math.max(...track.map(t => t.alt));
+        const t = (alt - min) / (max - min);
+        if(t > 0.75) return '#ff3333';
+        if(t > 0.5) return '#ffaa00';
+        if(t > 0.25) return '#aaff00';
+        return '#00aaff';
+    }
+
+    charts.alt = new Chart(document.getElementById('altChart'), {
+        type: 'line',
+        data: {
+            labels: track.map(t => t.time),
+            datasets: [{
+                label: 'Quota (m)',
+                data: track.map(t => t.alt),
+                borderColor: '#4fc3f7',
+                backgroundColor: 'rgba(79, 195, 247, 0.2)',
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: track.map(t => getColor(t.alt))
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#fff' } } },
+            scales: {
+                x: { ticks: { color: '#888', maxRotation: 45 }, grid: { color: '#333' } },
+                y: { ticks: { color: '#888' }, grid: { color: '#333' } }
+            }
+        }
+    });
+
+    charts.speed = new Chart(document.getElementById('speedChart'), {
+        type: 'line',
+        data: {
+            labels: track.map(t => t.time),
+            datasets: [{
+                label: 'Vel. orizzontale (km/h)',
+                data: track.map(t => t.speedKmh),
+                borderColor: '#ff9800',
+                backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                fill: true,
+                tension: 0.4,
+                yAxisID: 'y'
+            }, {
+                label: 'Vario (m/s)',
+                data: track.map(t => t.vario),
+                borderColor: '#f44336',
+                borderDash: [5, 5],
+                pointRadius: 4,
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { labels: { color: '#fff' } } },
+            scales: {
+                x: { ticks: { color: '#888', maxRotation: 45 }, grid: { color: '#333' } },
+                y: { position: 'left', ticks: { color: '#ff9800' }, grid: { color: '#333' } },
+                y1: { position: 'right', ticks: { color: '#f44336' }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+function updateInfo(point) {
+    document.getElementById('curr-alt').innerHTML = point.alt.toFixed(0) + '<span style="font-size:10px;color:#888;">m</span>';
+    document.getElementById('curr-vario').innerHTML = point.vario.toFixed(1) + '<span style="font-size:10px;color:#888;">m/s</span>';
+    document.getElementById('curr-vario').style.color = point.vario < -10 ? '#ff6666' : (point.vario < 0 ? '#ffaa00' : '#66ff66');
+    document.getElementById('curr-speed').innerHTML = point.speedKmh.toFixed(1) + '<span style="font-size:10px;color:#888;">km/h</span>';
+    document.getElementById('curr-dir').innerHTML = point.dir.toFixed(0) + '<span style="font-size:10px;color:#888;">°</span>';
+    document.getElementById('curr-rssi').innerHTML = point.rssi + '<span style="font-size:10px;color:#888;">dB</span>';
+
+    const qthLat = parseFloat(document.getElementById('qth-lat').value);
+    const qthLon = parseFloat(document.getElementById('qth-lon').value);
+    if(qthLat && qthLon) {
+        const dist = getDistance(point.lat, point.lon, qthLat, qthLon);
+        document.getElementById('curr-dist').innerHTML = dist.toFixed(1) + '<span style="font-size:10px;color:#888;">km</span>';
+    }
+}
+
+function updateQTH() {
+    const lat = parseFloat(document.getElementById('qth-lat').value);
+    const lon = parseFloat(document.getElementById('qth-lon').value);
+
+    if(!lat || !lon || track.length === 0) return;
+
+    if(qthMarker) map.removeLayer(qthMarker);
+    if(qthCircle) map.removeLayer(qthCircle);
+
+    qthMarker = L.marker([lat, lon], {
+        icon: L.divIcon({
+            className: 'qth-marker',
+            html: '<i class="fas fa-home"></i>',
+            iconSize: [24, 24], iconAnchor: [12, 12]
+        })
+    }).addTo(map).bindPopup('<b>QTH</b>');
+
+    qthCircle = L.circle([lat, lon], {
+        radius: 5000, color: '#ff9800', fillColor: '#ff9800',
+        fillOpacity: 0.1, weight: 1, dashArray: '5, 10'
+    }).addTo(map);
+
+    const last = track[track.length-1];
+    const distCurrent = getDistance(last.lat, last.lon, lat, lon);
+    const distLanding = touchdown.landingLat ? getDistance(touchdown.landingLat, touchdown.landingLon, lat, lon) : 0;
+
+    const timeToQTH = distCurrent / (last.speedKmh / 60);
+
+    document.getElementById('dist-current').textContent = distCurrent.toFixed(2) + ' km';
+    document.getElementById('dist-landing').textContent = distLanding.toFixed(2) + ' km';
+    document.getElementById('time-to-qth').innerHTML = timeToQTH.toFixed(0) + ' <span style="font-size:10px;color:#888;">min</span>';
+    document.getElementById('qth-stats').style.display = 'block';
+
+    updateInfo(last);
+
+    const group = new L.featureGroup([qthMarker, L.marker([last.lat, last.lon])]);
+    map.fitBounds(group.getBounds().pad(0.2));
+}
+
+function exportKML() {
+    if(track.length === 0) return;
+
+    const qthLat = document.getElementById('qth-lat').value || '42.5478';
+    const qthLon = document.getElementById('qth-lon').value || '12.7139';
+
+    let coordinates = '';
+    let placemarks = '';
+
+    track.forEach((point, i) => {
+        coordinates += `${point.lon},${point.lat},${point.alt} `;
+        placemarks += `
+        <Placemark>
+            <name>${sondeId} - ${point.alt.toFixed(0)}m</name>
+            <description>
+                <![CDATA[
+                <b>Altitudine:</b> ${point.alt.toFixed(1)} m<br>
+                <b>Vario:</b> ${point.vario.toFixed(1)} m/s<br>
+                <b>Velocità:</b> ${point.speedKmh.toFixed(1)} km/h<br>
+                <b>Direzione:</b> ${point.dir.toFixed(0)}°<br>
+                <b>Frame:</b> ${point.frame}<br>
+                <b>Ora:</b> ${point.time}
+                ]]>
+            </description>
+            <Point><coordinates>${point.lon},${point.lat},${point.alt}</coordinates></Point>
+        </Placemark>`;
+    });
+
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+    <name>Radiosonda ${sondeId}</name>
+    <description>Traccia volo radiosonda ${sondeId}</description>
+
+    <Style id="trackStyle"><LineStyle><color>ff0000ff</color><width>4</width></LineStyle></Style>
+    <Style id="qthStyle">
+        <IconStyle><color>ff00aaff</color><scale>1.5</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png</href></Icon></IconStyle>
+    </Style>
+    <Style id="landingStyle">
+        <IconStyle><color>ff00ff00</color><scale>1.5</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/flag.png</href></Icon></IconStyle>
+    </Style>
+
+    <Placemark>
+        <name>Traccia ${sondeId}</name>
+        <styleUrl>#trackStyle</styleUrl>
+        <LineString><altitudeMode>absolute</altitudeMode><coordinates>${coordinates}</coordinates></LineString>
+    </Placemark>
+
+    ${placemarks}
+
+    <Placemark>
+        <name>QTH - Stazione Base</name>
+        <styleUrl>#qthStyle</styleUrl>
+        <Point><coordinates>${qthLon},${qthLat},0</coordinates></Point>
+    </Placemark>
+
+    ${touchdown.landingLat ? `
+    <Placemark>
+        <name>Touchdown Stimato</name>
+        <styleUrl>#landingStyle</styleUrl>
+        <Point><coordinates>${touchdown.landingLon},${touchdown.landingLat},0</coordinates></Point>
+    </Placemark>` : ''}
+</Document>
+</kml>`;
+
+    const blob = new Blob([kml], {type: 'application/vnd.google-earth.kml+xml'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `radiosonda_${sondeId}.kml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Event Listener
+document.getElementById('csvFile').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if(!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        const rawData = parseCSV(text);
+        processData(rawData);
+    };
+    reader.readAsText(file);
+});
+</script>
+</body>
+</html>
