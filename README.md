@@ -2,7 +2,6 @@
 
 Visualizzatore offline per tracce radiosonde meteo con analisi avanzata del volo, predizione touchdown e export KML.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![HTML5](https://img.shields.io/badge/HTML5-ES6-orange.svg)](https://www.w3.org/TR/html5/)
 [![Leaflet](https://img.shields.io/badge/Maps-Leaflet-green.svg)](https://leafletjs.com/)
 
